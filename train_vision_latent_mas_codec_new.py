@@ -1345,6 +1345,23 @@ def _load_mm_processor_or_tokenizer(name: str, wrapper: ModelWrapper):
                                
 
 
+def _anti_collapse_loss(U: torch.Tensor):
+    """VICReg variance + covariance regularization.
+
+    Ref: Bardes et al., ICLR 2022.
+    """
+    if U.dim() == 3:
+        U = U.reshape(-1, U.shape[-1])
+    D = U.shape[-1]
+    std = U.std(dim=0, unbiased=False)
+    loss_var = F.relu(1.0 - std).mean()
+    U_centered = U - U.mean(dim=0, keepdim=True)
+    cov = (U_centered.T @ U_centered) / (U.shape[0] - 1)
+    mask = torch.eye(D, device=U.device, dtype=torch.bool)
+    loss_cov = cov[~mask].pow(2).sum() / D
+    return loss_var, loss_cov
+
+
 def _train_one_model(
     *,
     wrapper: ModelWrapper,
@@ -1434,6 +1451,7 @@ def _train_one_model(
     loss_mse_w = float(cfg.vision_codec_loss_mse)
     loss_kl_w = float(cfg.vision_codec_loss_kl)
     loss_stats_w = float(cfg.vision_codec_loss_stats)
+    loss_ac_w = float(getattr(cfg, "vision_codec_loss_anti_collapse", 0.0))
     kl_mode = str(getattr(cfg, "vision_codec_kl_mode", "auto")).strip().lower()
     kl_topk = int(getattr(cfg, "vision_codec_kl_topk", 0))
     if kl_mode == "auto":
@@ -1692,6 +1710,7 @@ def _train_one_model(
         loss_mse = torch.zeros((), device=device, dtype=torch.float32)
         loss_kl = torch.zeros((), device=device, dtype=torch.float32)
         loss_stats = torch.zeros((), device=device, dtype=torch.float32)
+        loss_ac = torch.zeros((), device=device, dtype=torch.float32)
         if loss_mse_w > 0:
             loss_mse = F.mse_loss(student_h, teacher_h)
             loss = loss + loss_mse_w * loss_mse
@@ -1712,11 +1731,17 @@ def _train_one_model(
             loss_stats = F.mse_loss(inj_rms, dummy_rms.expand_as(inj_rms))
             loss = loss + loss_stats_w * loss_stats
 
+        if loss_ac_w > 0:
+            loss_var, loss_cov = _anti_collapse_loss(U_flat)
+            loss_ac = loss_var + loss_cov
+            loss = loss + loss_ac_w * loss_ac
+
         local_loss_ok = bool(
             torch.isfinite(loss).item()
             and torch.isfinite(loss_mse).item()
             and torch.isfinite(loss_kl).item()
             and torch.isfinite(loss_stats).item()
+            and torch.isfinite(loss_ac).item()
         )
         global_loss_ok = _ddp_all_true(local_loss_ok, device=device)
         if not global_loss_ok:
@@ -1778,6 +1803,22 @@ def _train_one_model(
 
         opt.step()
 
+        # Save checkpoint every N steps
+        ckpt_every = int(getattr(cfg, "vision_codec_checkpoint_every", 0))
+        if ckpt_every > 0 and ((_step + 1) % ckpt_every) == 0:
+            step_ckpt_path = str(cfg.vision_codec_path).replace(".pt", f"_step{_step+1}.pt")
+            enc_mod = enc.module if hasattr(enc, "module") else enc
+            dec_mod = dec.module if hasattr(dec, "module") else dec
+            step_ckpt = {
+                "encoders": {wrapper.model_name: {k: v.detach().float().cpu() for k, v in enc_mod.state_dict().items()}},
+                "decoders": {wrapper.model_name: {k: v.detach().float().cpu() for k, v in dec_mod.state_dict().items()}},
+                "_steps": _step + 1,
+            }
+            os.makedirs(os.path.dirname(str(cfg.vision_codec_path)) or ".", exist_ok=True)
+            torch.save(step_ckpt, step_ckpt_path)
+            if _ddp_rank() == 0:
+                print(f"[checkpoint] Saved step {_step+1} checkpoint: {step_ckpt_path}", flush=True)
+
         if _ddp_rank() == 0 and isinstance(pbar, tqdm):
             pbar.set_postfix({"loss": f"{float(loss.detach().cpu()):.6f}"})
             log_every = max(1, int(getattr(cfg, "vision_codec_log_every", 10)))
@@ -1787,7 +1828,8 @@ def _train_one_model(
                     f"loss={float(loss.detach().cpu()):.6f} "
                     f"mse={float(loss_mse.detach().cpu()):.6f} "
                     f"kl={float(loss_kl.detach().cpu()):.6f} "
-                    f"stats={float(loss_stats.detach().cpu()):.6f}",
+                    f"stats={float(loss_stats.detach().cpu()):.6f} "
+                    f"ac={float(loss_ac.detach().cpu()):.6f}",
                     flush=True,
                 )
 
@@ -1920,6 +1962,8 @@ def main() -> None:
     p.add_argument("--vision_codec_loss_mse", type=float, default=1.0)
     p.add_argument("--vision_codec_loss_kl", type=float, default=0.25)
     p.add_argument("--vision_codec_loss_stats", type=float, default=0.1)
+    p.add_argument("--vision_codec_loss_anti_collapse", type=float, default=0.0,
+                   help="Weight for VICReg anti-collapse loss (variance + covariance).")
     p.add_argument(
         "--vision_codec_kl_mode",
         type=str,
@@ -2023,6 +2067,12 @@ def main() -> None:
         type=int,
         default=1,
         help="If 1, save a progressive checkpoint after each model codec finishes training.",
+    )
+    p.add_argument(
+        "--vision_codec_checkpoint_every",
+        type=int,
+        default=0,
+        help="Save intermediate checkpoint every N training steps (0=disabled).",
     )
     p.add_argument(
         "--vision_codec_partial_ckpt_path",
