@@ -1,0 +1,156 @@
+{
+  "original_small": {
+    "effective_rank": 2.32,
+    "rankme": 2.32,
+    "top5_ratio": 0.932,
+    "cos_sim_mean": 0.999,
+    "cos_sim_std": 0.0014,
+    "dead_dims": 4,
+    "total_dims": 512,
+    "singular_values_top10": [
+      3971.2847,
+      109.3215,
+      47.4363,
+      21.6334,
+      18.6577,
+      13.9188,
+      9.6546,
+      9.3277,
+      8.1254,
+      7.9106
+    ],
+    "singular_values_decay": 25360776.0
+  },
+  "ijepa_enc_small": {
+    "effective_rank": 75.53,
+    "rankme": 75.53,
+    "top5_ratio": 0.3782,
+    "cos_sim_mean": 0.5378,
+    "cos_sim_std": 0.3836,
+    "dead_dims": 0,
+    "total_dims": 512,
+    "singular_values_top10": [
+      3067.1377,
+      2131.5781,
+      474.4086,
+      427.1651,
+      379.8116,
+      352.4993,
+      341.2311,
+      295.511,
+      285.9732,
+      276.0936
+    ],
+    "singular_values_decay": 3811475.5
+  },
+  "vicreg05_small": {
+    "effective_rank": 5.42,
+    "rankme": 5.42,
+    "top5_ratio": 0.836,
+    "cos_sim_mean": 0.9889,
+    "cos_sim_std": 0.007,
+    "dead_dims": 0,
+    "total_dims": 512,
+    "singular_values_top10": [
+      3932.5144,
+      292.8635,
+      175.2291,
+      122.0234,
+      109.3396,
+      90.8761,
+      79.6628,
+      73.2412,
+      48.5075,
+      46.9374
+    ],
+    "singular_values_decay": 8174324.0
+  },
+  "original_full": {
+    "effective_rank": 4.05,
+    "rankme": 4.05,
+    "top5_ratio": 0.8992,
+    "cos_sim_mean": 0.9755,
+    "cos_sim_std": 0.0414,
+    "dead_dims": 0,
+    "total_dims": 512,
+    "singular_values_top10": [
+      3930.3127,
+      579.7797,
+      167.7556,
+      62.187,
+      55.1355,
+      34.3367,
+      31.8134,
+      29.6315,
+      18.9249,
+      17.319
+    ],
+    "singular_values_decay": 4197043.0
+  },
+  "vicreg05_full": {
+    "effective_rank": 2.94,
+    "rankme": 2.94,
+    "top5_ratio": 0.91,
+    "cos_sim_mean": 0.9972,
+    "cos_sim_std": 0.0018,
+    "dead_dims": 0,
+    "total_dims": 512,
+    "singular_values_top10": [
+      3948.0398,
+      140.0307,
+      112.0448,
+      57.4914,
+      50.496,
+      41.8874,
+      34.3651,
+      27.4808,
+      23.7167,
+      19.4858
+    ],
+    "singular_values_decay": 14626245.0
+  },
+  "ijepa_enc_full": {
+    "effective_rank": 4.72,
+    "rankme": 4.72,
+    "top5_ratio": 0.8735,
+    "cos_sim_mean": 0.9864,
+    "cos_sim_std": 0.0135,
+    "dead_dims": 0,
+    "total_dims": 512,
+    "singular_values_top10": [
+      3942.385,
+      300.8639,
+      260.5813,
+      169.7235,
+      98.1642,
+      69.3196,
+      62.3706,
+      37.3325,
+      35.2306,
+      27.1143
+    ],
+    "singular_values_decay": 91566904.0
+  },
+  "ijepa_dec_full": {
+    "effective_rank": 4.72,
+    "rankme": 4.72,
+    "top5_ratio": 0.8735,
+    "cos_sim_mean": 0.9864,
+    "cos_sim_std": 0.0135,
+    "dead_dims": 0,
+    "total_dims": 512,
+    "singular_values_top10": [
+      3942.385,
+      300.8639,
+      260.5813,
+      169.7235,
+      98.1642,
+      69.3196,
+      62.3706,
+      37.3325,
+      35.2306,
+      27.1143
+    ],
+    "singular_values_decay": 91566904.0
+  }
+}
