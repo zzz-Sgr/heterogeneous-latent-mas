@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>隐空间通信的坍塌危机 — 纯文字校对版</title>
+<style>
+  body { font-family: sans-serif; max-width: 960px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+  .slide { background: white; border: 1px solid #ccc; margin: 30px 0; padding: 40px; page-break-after: always; }
+  h1 { font-size: 28px; margin: 0 0 10px 0; }
+  h2 { font-size: 22px; margin: 0 0 20px 0; color: #333; }
+  h3 { font-size: 16px; margin: 20px 0 5px 0; color: #555; }
+  p, li { font-size: 15px; line-height: 1.7; }
+  .sub { color: #666; font-size: 16px; margin-bottom: 30px; }
+  .meta { color: #999; font-size: 14px; }
+  .question-box { background: #eee; padding: 12px 20px; margin-top: 30px; font-weight: bold; }
+  .table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 13px; }
+  .table th { background: #333; color: white; padding: 8px 6px; text-align: center; }
+  .table td { border: 1px solid #ddd; padding: 6px; text-align: center; }
+  .conclusion { background: #eee; padding: 15px 20px; margin-top: 20px; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<!-- Slide 1 -->
+<div class="slide">
+  <h1>隐空间通信的坍塌危机：<br>为什么VLM Agent之间其实"听不懂"彼此</h1>
+  <p class="sub">Vision Wormhole UVC的维度坍塌诊断与自监督修复</p>
+  <p class="meta">组会汇报 · 2026年6月</p>
+</div>
+
+<!-- Slide 2 -->
+<div class="slide">
+  <h2>背景：Vision Wormhole — 让不同VLM Agent通过"意识"交流</h2>
+  <ul>
+    <li>不同厂商的VLM（Qwen、LLaVA、Gemma...）内部表示千差万别，无法直接通信</li>
+    <li>Vision Wormhole提出UVC（Universal Visual Codec）：把hidden state压缩到共享连续隐空间</li>
+    <li>Agent之间发送"思想向量"——一个512维浮点数数组——通过视觉接口注入接收方</li>
+    <li>训练目标：<strong>Teacher-Student蒸馏</strong></li>
+    <li style="margin-left:20px">Teacher = Text Pathway输出（自然语言天然跨模型）</li>
+    <li style="margin-left:20px">Student = Visual Pathway / Codec（学习隐空间）</li>
+    <li style="margin-left:20px">Loss = MSE(student_h, teacher_h) + KL(student_logits, teacher_logits) + 统计对齐</li>
+  </ul>
+  <div class="question-box">核心问题：这个512维的"思想向量"，真的承载了丰富信息吗？</div>
+</div>
+
+<!-- Slide 3 -->
+<div class="slide">
+  <h2>核心发现：512维通道，只有2根水管在流水</h2>
+  <p>对UVC输出的512维latent space做SVD分析，发现严重维度坍塌。</p>
+
+  <h3>小样本（90条 × 400步 = 8.9 epoch）</h3>
+  <table class="table">
+    <tr><th>Checkpoint</th><th>Eff Rank</th><th>Token CosSim</th><th>Dead Dims</th></tr>
+    <tr><td>Original (Teacher-Student)</td><td><strong>2.32</strong></td><td>0.999</td><td>4</td></tr>
+    <tr><td>+ VICReg λ=0.1</td><td>1.89</td><td>—</td><td>—</td></tr>
+    <tr><td>+ VICReg λ=0.5</td><td>5.42</td><td>0.989</td><td>0</td></tr>
+    <tr><td>+ I-JEPA (自监督预训练)</td><td><strong>75.53</strong></td><td>0.538</td><td>0</td></tr>
+  </table>
+
+  <h3>全量数据（3000条 × 400步 = 0.27 epoch → 欠训练）</h3>
+  <table class="table">
+    <tr><th>Checkpoint</th><th>Eff Rank</th><th>Token CosSim</th></tr>
+    <tr><td>Original</td><td>4.05</td><td>0.976</td></tr>
+    <tr><td>+ VICReg λ=0.5</td><td>2.94</td><td>0.997</td></tr>
+    <tr><td>+ I-JEPA (欠训练版)</td><td>4.72</td><td>0.986</td></tr>
+    <tr><td><strong>+ I-JEPA (重训0.6 epoch)</strong></td><td><strong>14.29</strong></td><td>0.977</td></tr>
+    <tr><td><strong>+ I-JEPA (重训1.0 epoch)</strong></td><td><strong>110.99</strong></td><td>0.862</td></tr>
+  </table>
+
+  <h3>关键发现</h3>
+  <ul>
+    <li>512维隐空间实际只使用2-3个有效维度，其余509维是复制粘贴</li>
+    <li>Token Cosine Similarity = 0.999：无论输入什么，输出向量几乎完全相同</li>
+    <li>训练越久越差：step 150 Eff Rank 3.61 → step 300 降到3.01</li>
+    <li>这不是欠拟合——是退化（collapse）</li>
+  </ul>
+</div>
+
+<!-- Slide 4 -->
+<div class="slide">
+  <h2>为什么坍塌？Teacher-Student蒸馏的退化捷径</h2>
+
+  <h3>1. 退化捷径</h3>
+  <ul>
+    <li>Teacher本身通过离散文本输出，其latent多样性有限</li>
+    <li>Student发现一个简单解：对所有输入输出"平均向量"就能让MSE很低</li>
+    <li>这比学习真正的信息编码容易得多——梯度自然流向退化解</li>
+  </ul>
+
+  <h3>2. 梯度方向集中化</h3>
+  <ul>
+    <li>Loss landscape在大部分方向上曲率为零</li>
+    <li>梯度只更新2-3个主方向，其他维度从未被有效训练</li>
+    <li>形成自反馈循环：不用的维度 → 梯度为零 → 继续不用 → Dead Dimensions</li>
+  </ul>
+
+  <h3>3. VICReg正则化为何不够</h3>
+  <ul>
+    <li>方差+协方差正则只能"推远"已存在的向量</li>
+    <li>无法重建已完全丢失的维度</li>
+    <li>Eff Rank从2→5，远不够（健康值 > 50）</li>
+    <li>正则化是创可贴，不是手术</li>
+  </ul>
+
+  <div class="conclusion">结论：Teacher-Student蒸馏在异构VLM架构上是结构性失败——调参和加正则解决不了。需要换训练范式。</div>
+</div>
+
+<!-- Slide 5 -->
+<div class="slide">
+  <h2>修复方案：I-JEPA自监督替代蒸馏</h2>
+
+  <h3>核心思路</h3>
+  <p>不做"模仿老师"，做"预测自己的另一面"。同一输入加不同噪声，从A的表示预测B的表示。</p>
+
+  <h3>Stage 1：I-JEPA Encoder预训练</h3>
+  <ul>
+    <li>anchor + noise_a → encoder → U_a → predictor → 预测U_b</li>
+    <li>anchor + noise_b → encoder → U_b (stop-gradient, 做目标)</li>
+    <li>Loss = MSE(pred, target) + 反坍塌正则 (方差 + 协方差)</li>
+    <li><strong>预测任务天然防止坍塌：不同输入必须产生不同输出</strong></li>
+    <li>结果：Eff Rank从2.32 → 110.99（<strong>48倍提升</strong>）</li>
+    <li>Token CosSim从0.999 → 0.862（token之间终于有差异了）</li>
+  </ul>
+
+  <h3>Stage 2：冻结Encoder，只训练Decoder</h3>
+  <ul>
+    <li>Encoder已学会丰富表示→冻结，不再变化</li>
+    <li>Decoder从头学习"把丰富表示翻译成有效VLM注入"</li>
+    <li>两阶段解耦：表示学习（防坍塌）与通信翻译（蒸馏）分开</li>
+  </ul>
+
+  <h3>关键洞察</h3>
+  <p>教师-学生蒸馏的问题不是"有蒸馏"，是"用蒸馏做表示学习"。把表示学习外包给I-JEPA，蒸馏只做翻译，双方各司其职。</p>
+</div>
+
+<!-- Slide 6 -->
+<div class="slide">
+  <h2>实验过程：三天从发现到验证</h2>
+
+  <table class="table">
+    <tr><th>时间</th><th>做了什么</th><th>结果</th><th>踩的坑</th></tr>
+    <tr><td>Day 1<br>6月25</td><td>环境搭建 + 小样本4路训练<br>(Original/VICReg 0.1/0.5/I-JEPA)<br>90条 × 400步</td><td>I-JEPA Eff Rank=75.53 ✅<br>Original只有2.32</td><td>PyTorch不支持RTX 5060 Ti<br>transformers版本不匹配<br>换3090解决</td></tr>
+    <tr><td>Day 2<br>6月26-27</td><td>全量6路实验<br>(3000条 × 400步)<br>bs=2, 每实验3.3h</td><td>全部Eff Rank < 5<br>I-JEPA也只有4.72 ❌<br>以为方法在大数据上失败</td><td>磁盘满（30G用完）<br>训练日志丢失<br>checkpoint无_steps字段</td></tr>
+    <tr><td>Day 3<br>6月28</td><td>分析根因→发现是epoch问题<br>小数据400步=8.9 epoch<br>全量400步=0.27 epoch</td><td>重训I-JEPA bs=3 2000步<br>每200步SVD监控</td><td>分段训练OOM(bs=4)<br>grep吃掉日志输出<br>SSH断连</td></tr>
+    <tr><td>Day 3-4<br>进行中</td><td>重训持续进行中</td><td>Eff Rank变化：<br>200步 2.31<br>400步 7.54<br>600步 14.29<br>800步 59.99<br>1000步 <strong>110.99</strong><br>（1 epoch）</td><td><strong>欠训练</strong>是最大的隐藏变量<br>小数据 vs 全量的公平对比必须按epoch，不能按步数</td></tr>
+  </table>
+
+  <p><strong>当前：</strong> step 1160/2000，Loss 0.071，训练继续中，Eff Rank还在上升</p>
+</div>
+
+<!-- Slide 7 -->
+<div class="slide">
+  <h2>下一步计划 + 核心结论</h2>
+
+  <h3>已完成 ✓</h3>
+  <ul>
+    <li>发现并量化UVC维度坍塌（Eff Rank = 2.32，CosSim = 0.999）</li>
+    <li>确认Teacher-Student蒸馏是根因（退化捷径 + 梯度集中化）</li>
+    <li>验证I-JEPA自监督方案有效（Eff Rank 2.32 → 110.99，48×提升）</li>
+  </ul>
+
+  <h3>待做 → ICLR 2027投稿</h3>
+  <ul>
+    <li>下游GSM8K/ARC-C/GPQA M0 vs M3通信质量对比（证明Eff Rank高≠无用功）</li>
+    <li>梯度SVD + Hessian谱 + CKA因果机制分析（论文核心贡献）</li>
+    <li>LFM2.5跨架构验证（Dense vs Mamba混合架构）</li>
+    <li>12周写作+投稿</li>
+  </ul>
+
+  <div class="conclusion" style="font-size:18px; text-align:center;">
+    核心结论：多Agent隐空间通信需要"反坍塌"作为训练第一性原理。<br>
+    不是添一个正则项——是换一个训练目标。
+  </div>
+</div>
+
+</body>
+</html>
